@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    sidecar.speedscale.com/inject: "true"
+    sidecar.speedscale.com/tls-out: "true"
+    replay.speedscale.com/mode: "generator-only"
+  name: fiber-otel
+spec:
+  selector:
+    matchLabels:
+      app: fiber-otel
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: fiber-otel
+    spec:
+      containers:
+        - name: fiber-otel
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: 300m
+              memory: 50Mi
+            requests:
+              cpu: 200m
+              memory: 50Mi
+          ports:
+            - containerPort: 8080
