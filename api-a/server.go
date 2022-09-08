@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -78,14 +77,14 @@ func getUser(c *fiber.Ctx) error {
 	traceIdRaw := c.Get("Trace-Id")
 	var ctx context.Context
 	if traceIdRaw != "" {
-		traceId, err := trace.TraceIDFromHex(traceIdRaw)
+		traceId, err := oteltrace.TraceIDFromHex(traceIdRaw)
 		if err != nil {
 			return c.Status(400).SendString("Invalid trace id")
 		}
-		spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
+		spanCtx := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
 			TraceID: traceId,
 		})
-		ctx = trace.ContextWithRemoteSpanContext(c.UserContext(), spanCtx)
+		ctx = oteltrace.ContextWithRemoteSpanContext(c.UserContext(), spanCtx)
 	} else {
 		ctx = c.UserContext()
 	}
@@ -101,7 +100,7 @@ func getUser(c *fiber.Ctx) error {
 
 // readDb pretend to read from database
 func callApiB(ctx context.Context, id string) (string, error) {
-	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), trace.WithSpanKind(trace.SpanKindInternal))
+	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), oteltrace.WithSpanKind(oteltrace.SpanKindInternal))
 	defer span.End()
 
 	client := &http.Client{}
@@ -116,7 +115,7 @@ func callApiB(ctx context.Context, id string) (string, error) {
 	}
 
 	// Add trace id
-	req.Header.Add("Trace-Id", trace.SpanFromContext(ctx).SpanContext().TraceID().String())
+	req.Header.Add("Trace-Id", oteltrace.SpanFromContext(ctx).SpanContext().TraceID().String())
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -124,7 +123,7 @@ func callApiB(ctx context.Context, id string) (string, error) {
 	}
 	defer res.Body.Close()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", err
 	}
