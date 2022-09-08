@@ -4,4 +4,4 @@ WORKDIR /opt/app
 
 ADD ./bin /opt/app/bin
 
-ENTRYPOINT bin/fiber-otel
+ENTRYPOINT bin/api-a

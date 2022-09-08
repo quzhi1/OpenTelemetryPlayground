@@ -22,7 +22,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("fiber-server")
+var tracer = otel.Tracer("api-b")
 
 func main() {
 	tp := initTracer()
@@ -45,9 +45,9 @@ func main() {
 		return errors.New("abc")
 	})
 
-	app.Get("/users/:id", getUser)
+	app.Get("/db/:id", getDb)
 
-	log.Fatal(app.Listen(":3000"))
+	log.Fatal(app.Listen(":3010"))
 }
 
 func initTracer() *sdktrace.TracerProvider {
@@ -71,7 +71,7 @@ func initTracer() *sdktrace.TracerProvider {
 }
 
 // getUser return user name by id
-func getUser(c *fiber.Ctx) error {
+func getDb(c *fiber.Ctx) error {
 	id := c.Params("id")
 	traceIdRaw := c.Get("Trace-Id")
 	var ctx context.Context
@@ -88,10 +88,10 @@ func getUser(c *fiber.Ctx) error {
 		ctx = c.UserContext()
 	}
 
-	thisCtx, span := tracer.Start(ctx, "getUser", oteltrace.WithAttributes(attribute.String("id", id)))
+	thisCtx, span := tracer.Start(ctx, "getDb", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
 	name := readDb(thisCtx, id)
-	return c.JSON(fiber.Map{"id": id, name: name})
+	return c.SendString(name)
 }
 
 // readDb pretend to read from database

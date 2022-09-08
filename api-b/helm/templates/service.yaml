@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  name: api-b
+spec:
+  ports:
+    - name: "3010"
+      port: 3010
+      targetPort: 3010
+  selector:
+    app: api-b
+  type: LoadBalancer
+status:
+  loadBalancer: {}

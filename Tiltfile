@@ -5,21 +5,23 @@ load('ext://helm_resource', 'helm_resource')
 
 compile_opt = 'GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 '
 
-# Compile example application
+#################### api-a ######################
+
+# Compile api-a binary
 local_resource(
-  'fiber-otel-compile',
-  compile_opt + 'go build -o bin/fiber-otel fiber-otel/server.go',
-  deps=['fiber-otel/server.go'],
-  ignore=['bin', 'helm', 'Dockerfile', 'Tiltfile', 'README.md', 'LICENSE', '.gitignore'],
-  labels="fiber-otel",
+  'api-a-compile',
+  compile_opt + 'go build -o bin/api-a api-a/server.go',
+  deps=['api-a/server.go'],
+  ignore=['bin'],
+  labels="api-a",
 )
 
-# Build example docker image
+# Build api-b docker image
 docker_build_with_restart(
-  'fiber-otel-image',
+  'api-a-image',
   '.',
-  entrypoint=['/opt/app/bin/fiber-otel'],
-  dockerfile='Dockerfile',
+  entrypoint=['/opt/app/bin/api-a'],
+  dockerfile='api-a/Dockerfile',
   only=[
     './bin',
   ],
@@ -30,10 +32,45 @@ docker_build_with_restart(
 
 # Install example helm chart
 helm_resource(
-  'fiber-otel-service',
-  'helm',
-  image_deps=['fiber-otel-image'],
+  'api-a-service',
+  'api-a/helm',
+  image_deps=['api-a-image'],
   image_keys=[('image.repository', 'image.tag')],
   port_forwards=['3000:3000'],
-  labels="fiber-otel",
+  labels="api-a",
+)
+
+#################### api-b ######################
+
+# Compile api-b binary
+local_resource(
+  'api-b-compile',
+  compile_opt + 'go build -o bin/api-b api-b/server.go',
+  deps=['api-b/server.go'],
+  ignore=['bin'],
+  labels="api-b",
+)
+
+# Build api-b docker image
+docker_build_with_restart(
+  'api-b-image',
+  '.',
+  entrypoint=['/opt/app/bin/api-b'],
+  dockerfile='api-b/Dockerfile',
+  only=[
+    './bin',
+  ],
+  live_update=[
+    sync('./bin', '/opt/app/bin'),
+  ],
+)
+
+# Install example helm chart
+helm_resource(
+  'api-b-service',
+  'api-b/helm',
+  image_deps=['api-b-image'],
+  image_keys=[('image.repository', 'image.tag')],
+  port_forwards=['3010:3010'],
+  labels="api-b",
 )

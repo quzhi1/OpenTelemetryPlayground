@@ -1,0 +1,4 @@
+name: api-b
+description: Example application for api-b
+version: 0.0.1
+apiVersion: v1
