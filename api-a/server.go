@@ -6,17 +6,19 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/gofiber/contrib/otelfiber"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	stdout "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 
-	//"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -52,10 +54,23 @@ func main() {
 }
 
 func initTracer() *sdktrace.TracerProvider {
-	exporter, err := stdout.New(stdout.WithPrettyPrint())
-	//exporter, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint("http://localhost:14268/api/traces")))
+	// Print locally
+	// exporter, err := stdout.New(stdout.WithPrettyPrint())
+
+	// Connect to collector
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, "my-opentelemetry-collector.default.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
 		log.Fatal(err)
+		panic(err)
+	}
+
+	// Set up a trace exporter
+	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
 	}
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),

@@ -1,0 +1,15 @@
+mode: deployment
+
+config:
+  exporters:
+    # logging:
+    #   loglevel: info
+    coralogix:
+      # The Coralogix traces ingress endpoint
+      endpoint: "tracing-ingress.coralogix.com:9443"
+      # Coralogix private key
+      private_key: "4e650f87-634f-b903-f0be-642a95086129"
+      # Traces emitted by this OpenTelemetry exporter should be tagged
+      # in Coralogix with the following application and subsystem names
+      application_name: "OtelTest"
+      subsystem_name: "otel"

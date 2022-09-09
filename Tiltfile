@@ -1,9 +1,23 @@
 # -*- mode: Python -*-
 
 load('ext://restart_process', 'docker_build_with_restart')
-load('ext://helm_resource', 'helm_resource')
+load('ext://helm_resource', 'helm_resource', 'helm_repo')
 
 compile_opt = 'GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 '
+
+#################### OpenTelemetry collector ##################
+helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
+helm_resource(
+  'my-opentelemetry-collector',
+  'open-telemetry/opentelemetry-collector',
+  flags=[
+    '-f',
+    'collector/developer.values.yaml',
+  ],
+  deps=['collector/developer.values.yaml'],
+  resource_deps=['open-telemetry'],
+  labels='collector',
+)
 
 #################### api-a ######################
 
