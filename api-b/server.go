@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -16,8 +17,6 @@ import (
 	"github.com/gofiber/contrib/otelfiber"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -54,8 +53,8 @@ func main() {
 }
 
 func initTracer() *sdktrace.TracerProvider {
-	// Print locally
-	// exporter, err := stdout.New(stdout.WithPrettyPrint())
+	// // Print locally
+	// exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 
 	// Connect to collector
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -68,6 +67,8 @@ func initTracer() *sdktrace.TracerProvider {
 
 	// Set up a trace exporter
 	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+
+	// Handle error and create tracer provider
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
@@ -88,24 +89,21 @@ func initTracer() *sdktrace.TracerProvider {
 
 // getUser return user name by id
 func getDb(c *fiber.Ctx) error {
+	// Parse id
 	id := c.Params("id")
-	traceIdRaw := c.Get("Trace-Id")
-	var ctx context.Context
-	if traceIdRaw != "" {
-		traceId, err := trace.TraceIDFromHex(traceIdRaw)
-		if err != nil {
-			return c.Status(400).SendString("Invalid trace id")
-		}
-		spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
-			TraceID: traceId,
-		})
-		ctx = trace.ContextWithRemoteSpanContext(c.UserContext(), spanCtx)
-	} else {
-		ctx = c.UserContext()
-	}
 
+	// Get context
+	ctx := c.UserContext()
+
+	// Parse baggage if there is one
+	// bag := baggage.FromContext(ctx)
+	// span.AddEvent("handling this...", trace.WithAttributes(attribute.Key("username").String(bag.Member("username").Value())))
+
+	// Create new span
 	thisCtx, span := tracer.Start(ctx, "getDb", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
+
+	// Get name and return
 	name := readDb(thisCtx, id)
 	return c.SendString(name)
 }

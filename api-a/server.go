@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"google.golang.org/grpc"
@@ -54,8 +55,8 @@ func main() {
 }
 
 func initTracer() *sdktrace.TracerProvider {
-	// Print locally
-	// exporter, err := stdout.New(stdout.WithPrettyPrint())
+	// // Print locally
+	// exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 
 	// Connect to collector
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -68,6 +69,8 @@ func initTracer() *sdktrace.TracerProvider {
 
 	// Set up a trace exporter
 	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+
+	// Handle error and create tracer provider
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
@@ -89,20 +92,7 @@ func initTracer() *sdktrace.TracerProvider {
 // getUser return user name by id
 func getUser(c *fiber.Ctx) error {
 	id := c.Params("id")
-	traceIdRaw := c.Get("Trace-Id")
-	var ctx context.Context
-	if traceIdRaw != "" {
-		traceId, err := oteltrace.TraceIDFromHex(traceIdRaw)
-		if err != nil {
-			return c.Status(400).SendString("Invalid trace id")
-		}
-		spanCtx := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
-			TraceID: traceId,
-		})
-		ctx = oteltrace.ContextWithRemoteSpanContext(c.UserContext(), spanCtx)
-	} else {
-		ctx = c.UserContext()
-	}
+	ctx := c.UserContext()
 
 	thisCtx, span := tracer.Start(ctx, "getUser", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
@@ -115,11 +105,15 @@ func getUser(c *fiber.Ctx) error {
 
 // readDb pretend to read from database
 func callApiB(ctx context.Context, id string) (string, error) {
-	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), oteltrace.WithSpanKind(oteltrace.SpanKindInternal))
-	defer span.End()
+	// Create client with otel
+	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 
-	client := &http.Client{}
-	req, err := http.NewRequest(
+	// Add baggage if you want
+	// bag, _ := baggage.Parse("username=donuts")
+	// ctx = baggage.ContextWithBaggage(ctx, bag)
+
+	req, err := http.NewRequestWithContext(
+		ctx,
 		"GET",
 		"http://api-b.default.svc.cluster.local:3010/db/"+id,
 		nil,
@@ -128,9 +122,6 @@ func callApiB(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	// Add trace id
-	req.Header.Add("Trace-Id", oteltrace.SpanFromContext(ctx).SpanContext().TraceID().String())
 
 	res, err := client.Do(req)
 	if err != nil {
