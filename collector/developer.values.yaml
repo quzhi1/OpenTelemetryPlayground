@@ -11,8 +11,8 @@ config:
       private_key: ""
       # Traces emitted by this OpenTelemetry exporter should be tagged
       # in Coralogix with the following application and subsystem names
-      application_name: "us-central1-prod1"
-      subsystem_name: "traces"
+      application_name: "OtelTest"
+      subsystem_name: "minikube"
   service:
     pipelines:
       traces:
