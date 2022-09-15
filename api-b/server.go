@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
-	"log"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/quzhi1/open-telemetry-playground/util"
 
 	"github.com/gofiber/contrib/otelfiber"
 	"go.opentelemetry.io/otel"
@@ -41,15 +43,14 @@ func main() {
 	//	return fmt.Sprintf("%s - %s", ctx.Method(), ctx.Route().Path)
 	//})))
 
-	app.Use(otelfiber.Middleware("my-server"))
-
-	app.Get("/error", func(ctx *fiber.Ctx) error {
-		return errors.New("abc")
-	})
+	app.Use(otelfiber.Middleware("api-b"))
 
 	app.Get("/db/:id", getDb)
 
-	log.Fatal(app.Listen(":3010"))
+	err := app.Listen(":3010")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func initTracer() *sdktrace.TracerProvider {
@@ -61,7 +62,6 @@ func initTracer() *sdktrace.TracerProvider {
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, "my-opentelemetry-collector.default.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		log.Fatal(err)
 		panic(err)
 	}
 
@@ -70,7 +70,6 @@ func initTracer() *sdktrace.TracerProvider {
 
 	// Handle error and create tracer provider
 	if err != nil {
-		log.Fatal(err)
 		panic(err)
 	}
 	tp := sdktrace.NewTracerProvider(
@@ -79,7 +78,7 @@ func initTracer() *sdktrace.TracerProvider {
 		sdktrace.WithResource(
 			resource.NewWithAttributes(
 				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("my-service"),
+				semconv.ServiceNameKey.String("api-b"),
 			)),
 	)
 	otel.SetTracerProvider(tp)
@@ -103,15 +102,22 @@ func getDb(c *fiber.Ctx) error {
 	thisCtx, span := tracer.Start(ctx, "getDb", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
 
+	// Create logger
+	contextLogger := log.With().Str("trace_id", util.GetTraceIdFromSpan(span)).Logger()
+
 	// Get name and return
-	name := readDb(thisCtx, id)
+	name := readDb(thisCtx, id, contextLogger)
+	contextLogger.Info().Str("span_id", util.GetSpanIdFromSpan(span)).Msgf("Got name from database: %s", name)
 	return c.SendString(name)
 }
 
 // readDb pretend to read from database
-func readDb(ctx context.Context, id string) string {
+func readDb(ctx context.Context, id string, contextLogger zerolog.Logger) string {
+	// Create new span
 	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), trace.WithSpanKind(trace.SpanKindInternal))
 	defer span.End()
+
+	contextLogger.Info().Str("span_id", util.GetSpanIdFromSpan(span)).Msgf("Reading database, id: %s", id)
 	if id == "123" {
 		return "otelfiber tester"
 	}

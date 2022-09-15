@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
@@ -15,8 +13,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/quzhi1/open-telemetry-playground/util"
 
 	"github.com/gofiber/contrib/otelfiber"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -43,15 +43,14 @@ func main() {
 	//	return fmt.Sprintf("%s - %s", ctx.Method(), ctx.Route().Path)
 	//})))
 
-	app.Use(otelfiber.Middleware("my-server"))
-
-	app.Get("/error", func(ctx *fiber.Ctx) error {
-		return errors.New("abc")
-	})
+	app.Use(otelfiber.Middleware("api-a"))
 
 	app.Get("/users/:id", getUser)
 
-	log.Fatal(app.Listen(":3000"))
+	err := app.Listen(":3000")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func initTracer() *sdktrace.TracerProvider {
@@ -63,7 +62,6 @@ func initTracer() *sdktrace.TracerProvider {
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, "my-opentelemetry-collector.default.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		log.Fatal(err)
 		panic(err)
 	}
 
@@ -72,7 +70,6 @@ func initTracer() *sdktrace.TracerProvider {
 
 	// Handle error and create tracer provider
 	if err != nil {
-		log.Fatal(err)
 		panic(err)
 	}
 	tp := sdktrace.NewTracerProvider(
@@ -81,7 +78,7 @@ func initTracer() *sdktrace.TracerProvider {
 		sdktrace.WithResource(
 			resource.NewWithAttributes(
 				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("my-service"),
+				semconv.ServiceNameKey.String("api-a"),
 			)),
 	)
 	otel.SetTracerProvider(tp)
@@ -91,15 +88,27 @@ func initTracer() *sdktrace.TracerProvider {
 
 // getUser return user name by id
 func getUser(c *fiber.Ctx) error {
+	// Parse parameter
 	id := c.Params("id")
-	ctx := c.UserContext()
 
+	// Create span for handler
+	ctx := c.UserContext()
 	thisCtx, span := tracer.Start(ctx, "getUser", oteltrace.WithAttributes(attribute.String("id", id)))
 	defer span.End()
+
+	// Create logger
+	contextLogger := log.With().Str("trace_id", util.GetTraceIdFromSpan(span)).Logger()
+
+	// Call api-b
 	name, err := callApiB(thisCtx, id)
 	if err != nil {
+		contextLogger.Error().Str("span_id", util.GetSpanIdFromSpan(span)).Msgf("Error in calling api-b: %s", err.Error())
 		return err
+	} else {
+		contextLogger.Info().Str("span_id", util.GetSpanIdFromSpan(span)).Msgf("Got name from api-b: %s", name)
 	}
+
+	// Return response
 	return c.JSON(fiber.Map{"id": id, name: name})
 }
 
