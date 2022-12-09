@@ -13,6 +13,8 @@ helm_resource(
   flags=[
     '-f',
     'collector/developer.values.yaml',
+    '--set',
+    'config.exporters.coralogix.private_key=$CORALOGIX_PRIVATE_KEY',
   ],
   deps=['collector/developer.values.yaml'],
   resource_deps=['open-telemetry'],
