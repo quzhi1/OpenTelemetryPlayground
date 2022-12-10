@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"cloud.google.com/go/pubsub"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -27,8 +30,17 @@ import (
 )
 
 var tracer = otel.Tracer("api-a")
+var pubSubTopic = "source-topic"
+
+type ApiAServer struct {
+	PubSubClient *pubsub.Client
+}
 
 func main() {
+	// Server context
+	ctx := context.Background()
+
+	// Create open telemetry client
 	tp := initTracer()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
@@ -36,6 +48,19 @@ func main() {
 		}
 	}()
 
+	// Create pubsub client
+	client, err := pubsub.NewClient(ctx, "example-project")
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create pubsub client: %v", err))
+	}
+	defer client.Close()
+
+	// Create ApiAServer
+	apiAServer := ApiAServer{
+		PubSubClient: client,
+	}
+
+	// Create fiber server
 	app := fiber.New()
 
 	// customise span name
@@ -43,11 +68,15 @@ func main() {
 	//	return fmt.Sprintf("%s - %s", ctx.Method(), ctx.Route().Path)
 	//})))
 
+	// otel middleware
 	app.Use(otelfiber.Middleware("api-a"))
 
-	app.Get("/users/:id", getUser)
+	// Define routes
+	app.Get("/users/:id", apiAServer.getUser)
+	app.Post("/publish", apiAServer.publish)
 
-	err := app.Listen(":3000")
+	// Listen and serve
+	err = app.Listen(":3000")
 	if err != nil {
 		panic(err)
 	}
@@ -87,7 +116,7 @@ func initTracer() *sdktrace.TracerProvider {
 }
 
 // getUser return user name by id
-func getUser(c *fiber.Ctx) error {
+func (aas ApiAServer) getUser(c *fiber.Ctx) error {
 	// Parse parameter
 	id := c.Params("id")
 
@@ -110,6 +139,47 @@ func getUser(c *fiber.Ctx) error {
 
 	// Return response
 	return c.JSON(fiber.Map{"id": id, name: name})
+}
+
+// publish send a message to PubSub
+func (aas ApiAServer) publish(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+
+	// Get topic
+	topic := aas.PubSubClient.Topic(pubSubTopic)
+
+	// Check existence
+	exists, err := topic.Exists(ctx)
+	if !exists || err != nil {
+		log.Error().Err(err).Msgf("Error loading Topic %v. Exists: %v Err: %v", pubSubTopic, exists, err)
+		return c.JSON(fiber.Map{"status": "error"})
+	}
+
+	// Construct payload
+	data := map[string]string{
+		"hello": "world",
+	}
+
+	dataSerialized, err := json.Marshal(data)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error serializing data %v.", data)
+		return c.JSON(fiber.Map{"status": "error"})
+	}
+
+	log.Info().Msgf("Publishing data: %v", string(dataSerialized))
+
+	// Publish
+	result := topic.Publish(ctx, &pubsub.Message{Data: dataSerialized})
+
+	messageId, err := result.Get(ctx)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error publishing data %v.", string(dataSerialized))
+		return c.JSON(fiber.Map{"status": "error"})
+	}
+
+	log.Info().Msgf("Publish success, messageId: %s", messageId)
+
+	return c.JSON(fiber.Map{"status": "published"})
 }
 
 // readDb pretend to read from database

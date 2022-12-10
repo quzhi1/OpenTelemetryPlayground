@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"cloud.google.com/go/pubsub"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -27,8 +30,14 @@ import (
 )
 
 var tracer = otel.Tracer("api-b")
+var pubSubTopic = "source-topic"
+var subName = "source-sub"
 
 func main() {
+	// Server context
+	ctx := context.Background()
+
+	// Create open telemetry client
 	tp := initTracer()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
@@ -36,6 +45,10 @@ func main() {
 		}
 	}()
 
+	// Receive pubsub
+	go receivePubSub(ctx)
+
+	// Create fiber server
 	app := fiber.New()
 
 	// customise span name
@@ -43,10 +56,13 @@ func main() {
 	//	return fmt.Sprintf("%s - %s", ctx.Method(), ctx.Route().Path)
 	//})))
 
+	// otel middleware
 	app.Use(otelfiber.Middleware("api-b"))
 
+	// Define routes
 	app.Get("/db/:id", getDb)
 
+	// Listen and serve
 	err := app.Listen(":3010")
 	if err != nil {
 		panic(err)
@@ -122,4 +138,40 @@ func readDb(ctx context.Context, id string, contextLogger zerolog.Logger) string
 		return "otelfiber tester"
 	}
 	return "unknown"
+}
+
+// receivePubSub handles pubsub messages
+func receivePubSub(ctx context.Context) {
+	// Create pubsub client
+	client, err := pubsub.NewClient(ctx, "example-project")
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create pubsub client: %v", err))
+	}
+	defer client.Close()
+
+	// Get subscription
+	subscription := client.Subscription(subName)
+
+	exists, err := subscription.Exists(ctx)
+	if !exists || err != nil {
+		panic(fmt.Sprintf("Failed to create pubsub client: %v", err))
+	}
+
+	// Handling messages
+	err = subscription.Receive(ctx, func(ctx context.Context, m *pubsub.Message) {
+		var data map[string]string
+		err := json.Unmarshal(m.Data, &data)
+		if err != nil {
+			log.Error().Err(err)
+			m.Nack()
+			return
+		}
+
+		log.Info().Msgf("Received PubSub message: %s", data)
+		m.Ack()
+	})
+
+	if err != nil {
+		panic(err)
+	}
 }

@@ -29,3 +29,6 @@ spec:
               memory: 50Mi
           ports:
             - containerPort: 3010
+          env:
+            - name: PUBSUB_EMULATOR_HOST
+              value: "gcp-pubsub-emulator.default.svc.cluster.local:8085"

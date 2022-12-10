@@ -6,6 +6,7 @@ load('ext://helm_resource', 'helm_resource', 'helm_repo')
 compile_opt = 'GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 '
 
 #################### OpenTelemetry collector ##################
+
 helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
 helm_resource(
   'my-opentelemetry-collector',
@@ -19,6 +20,25 @@ helm_resource(
   deps=['collector/developer.values.yaml'],
   resource_deps=['open-telemetry'],
   labels='collector',
+)
+
+#################### Third party dependency ####################
+
+# Spin up pubsub
+helm_resource(
+  'gcp-pubsub-emulator',
+  'local-dependency/pubsub',
+  port_forwards=["8085:8085"],
+  labels='pubsub',
+)
+
+# Create pubsub topic
+local_resource(
+  'pubsub-init', 
+  "go run local-dependency/pubsub/main.go", 
+  deps="local-dependency/pubsub/",
+  resource_deps=["gcp-pubsub-emulator"],
+  labels=["pubsub"],
 )
 
 #################### api-a ######################

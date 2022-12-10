@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gcp-pubsub-emulator
+description: A Helm chart for GCP PubSub Emulator
+type: application
+version: 1.0.0
+appVersion: 1.0.0
