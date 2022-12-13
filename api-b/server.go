@@ -4,32 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/quzhi1/open-telemetry-playground/util"
 
 	"github.com/gofiber/contrib/otelfiber"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("api-b")
 var pubSubTopic = "source-topic"
 var subName = "source-sub"
 
@@ -69,39 +57,6 @@ func main() {
 	}
 }
 
-func initTracer() *sdktrace.TracerProvider {
-	// // Print locally
-	// exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-
-	// Connect to collector
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "my-opentelemetry-collector.default.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	if err != nil {
-		panic(err)
-	}
-
-	// Set up a trace exporter
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
-
-	// Handle error and create tracer provider
-	if err != nil {
-		panic(err)
-	}
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(
-			resource.NewWithAttributes(
-				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("api-b"),
-			)),
-	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	return tp
-}
-
 // getUser return user name by id
 func getDb(c *fiber.Ctx) error {
 	// Parse id
@@ -130,7 +85,7 @@ func getDb(c *fiber.Ctx) error {
 // readDb pretend to read from database
 func readDb(ctx context.Context, id string, contextLogger zerolog.Logger) string {
 	// Create new span
-	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), trace.WithSpanKind(trace.SpanKindInternal))
+	_, span := tracer.Start(ctx, "readDb", oteltrace.WithAttributes(attribute.String("id", id)), oteltrace.WithSpanKind(oteltrace.SpanKindInternal))
 	defer span.End()
 
 	contextLogger.Info().Str("span_id", util.GetSpanIdFromSpan(span)).Msgf("Reading database, id: %s", id)
@@ -158,20 +113,22 @@ func receivePubSub(ctx context.Context) {
 	}
 
 	// Handling messages
-	err = subscription.Receive(ctx, func(ctx context.Context, m *pubsub.Message) {
-		var data map[string]string
-		err := json.Unmarshal(m.Data, &data)
-		if err != nil {
-			log.Error().Err(err)
-			m.Nack()
-			return
-		}
-
-		log.Info().Msgf("Received PubSub message: %s", data)
-		m.Ack()
-	})
+	err = subscription.Receive(ctx, InstrumentedHandler)
 
 	if err != nil {
 		panic(err)
 	}
+}
+
+func pubSubHandler(_ context.Context, m *pubsub.Message) {
+	var data map[string]string
+	err := json.Unmarshal(m.Data, &data)
+	if err != nil {
+		log.Error().Err(err)
+		m.Nack()
+		return
+	}
+
+	log.Info().Msgf("Received PubSub message, id: %s, data: %s, attribute: %v", m.ID, data, m.Attributes)
+	m.Ack()
 }

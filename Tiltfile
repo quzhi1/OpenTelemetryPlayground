@@ -14,8 +14,6 @@ helm_resource(
   flags=[
     '-f',
     'collector/developer.values.yaml',
-    '--set',
-    'config.exporters.coralogix.private_key=$CORALOGIX_PRIVATE_KEY',
   ],
   deps=['collector/developer.values.yaml'],
   resource_deps=['open-telemetry'],
@@ -46,8 +44,8 @@ local_resource(
 # Compile api-a binary
 local_resource(
   'api-a-compile',
-  compile_opt + 'go build -o bin/api-a api-a/server.go',
-  deps=['api-a/server.go'],
+  compile_opt + 'go build -o bin/api-a api-a/*.go',
+  deps=['api-a'],
   ignore=['bin'],
   labels="api-a",
 )
@@ -81,8 +79,8 @@ helm_resource(
 # Compile api-b binary
 local_resource(
   'api-b-compile',
-  compile_opt + 'go build -o bin/api-b api-b/server.go',
-  deps=['api-b/server.go'],
+  compile_opt + 'go build -o bin/api-b api-b/*.go',
+  deps=['api-b'],
   ignore=['bin'],
   labels="api-b",
 )

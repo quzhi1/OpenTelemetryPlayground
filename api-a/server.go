@@ -6,14 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"cloud.google.com/go/pubsub"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/resource"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/quzhi1/open-telemetry-playground/util"
@@ -23,9 +18,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -82,39 +74,6 @@ func main() {
 	}
 }
 
-func initTracer() *sdktrace.TracerProvider {
-	// // Print locally
-	// exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-
-	// Connect to collector
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "my-opentelemetry-collector.default.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	if err != nil {
-		panic(err)
-	}
-
-	// Set up a trace exporter
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
-
-	// Handle error and create tracer provider
-	if err != nil {
-		panic(err)
-	}
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(
-			resource.NewWithAttributes(
-				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("api-a"),
-			)),
-	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	return tp
-}
-
 // getUser return user name by id
 func (aas ApiAServer) getUser(c *fiber.Ctx) error {
 	// Parse parameter
@@ -167,11 +126,17 @@ func (aas ApiAServer) publish(c *fiber.Ctx) error {
 	}
 
 	log.Info().Msgf("Publishing data: %v", string(dataSerialized))
+	msg := pubsub.Message{Data: dataSerialized}
+
+	// create span
+	ctx, span := beforePublishMessage(ctx, pubSubTopic, &msg)
+	defer span.End()
 
 	// Publish
-	result := topic.Publish(ctx, &pubsub.Message{Data: dataSerialized})
+	messageId, err := topic.Publish(ctx, &msg).Get(ctx)
 
-	messageId, err := result.Get(ctx)
+	// enrich span with publish result
+	afterPublishMessage(span, messageId, err)
 	if err != nil {
 		log.Error().Err(err).Msgf("Error publishing data %v.", string(dataSerialized))
 		return c.JSON(fiber.Map{"status": "error"})

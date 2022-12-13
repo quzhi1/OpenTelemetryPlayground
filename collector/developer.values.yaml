@@ -6,11 +6,14 @@ config:
       loglevel: info
     coralogix:
       # The Coralogix traces ingress endpoint
-      endpoint: "tracing-ingress.coralogix.us:9443"
+      traces:
+        endpoint: "otel-traces.coralogix.us:443"
+      private_key: ""
       # Traces emitted by this OpenTelemetry exporter should be tagged
       # in Coralogix with the following application and subsystem names
       application_name: "OtelTest"
       subsystem_name: "minikube"
+      timeout: 30s
   service:
     pipelines:
       traces:
