@@ -21,11 +21,6 @@ import (
 type PubSubHandler = func(context.Context, *pubsub.Message)
 
 var tracer = otel.Tracer("api-b")
-var InstrumentedHandler PubSubHandler
-
-type Flush interface {
-	ForceFlush(context.Context) error
-}
 
 func initTracer() *sdktrace.TracerProvider {
 	// // Print locally
@@ -58,13 +53,10 @@ func initTracer() *sdktrace.TracerProvider {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-	// Instrument pubsub
-	InstrumentedHandler = instrumentedHandler(pubSubTopic, pubSubHandler, tp)
-
 	return tp
 }
 
-func instrumentedHandler(topicID string, handler PubSubHandler, flush Flush) PubSubHandler {
+func wrapPubSubHandlerWithTelemetry(topicID string, handler PubSubHandler, traceProvider *sdktrace.TracerProvider) PubSubHandler {
 	return func(ctx context.Context, msg *pubsub.Message) {
 		// create span
 		ctx, span := beforePubSubHandlerInvoke(ctx, topicID, msg)
@@ -74,7 +66,7 @@ func instrumentedHandler(topicID string, handler PubSubHandler, flush Flush) Pub
 		handler(ctx, msg)
 
 		// flush spans
-		flush.ForceFlush(ctx)
+		traceProvider.ForceFlush(ctx)
 	}
 }
 
