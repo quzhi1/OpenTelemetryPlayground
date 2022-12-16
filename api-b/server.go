@@ -14,7 +14,6 @@ import (
 
 	"github.com/gofiber/contrib/otelfiber"
 	"go.opentelemetry.io/otel/attribute"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
@@ -35,7 +34,7 @@ func main() {
 	}()
 
 	// Receive pubsub
-	go receivePubSub(ctx, tp)
+	go receivePubSub(ctx)
 
 	// Create fiber server
 	app := fiber.New()
@@ -97,7 +96,7 @@ func readDb(ctx context.Context, id string, contextLogger zerolog.Logger) string
 }
 
 // receivePubSub handles pubsub messages
-func receivePubSub(ctx context.Context, tp *sdktrace.TracerProvider) {
+func receivePubSub(ctx context.Context) {
 	// Create pubsub client
 	client, err := pubsub.NewClient(ctx, "example-project")
 	if err != nil {
