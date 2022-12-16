@@ -56,7 +56,7 @@ func initTracer() *sdktrace.TracerProvider {
 	return tp
 }
 
-func wrapPubSubHandlerWithTelemetry(topicID string, handler PubSubHandler, traceProvider *sdktrace.TracerProvider) PubSubHandler {
+func wrapPubSubHandlerWithTelemetry(topicID string, handler PubSubHandler) PubSubHandler {
 	return func(ctx context.Context, msg *pubsub.Message) {
 		// create span
 		ctx, span := beforePubSubHandlerInvoke(ctx, topicID, msg)
@@ -64,9 +64,6 @@ func wrapPubSubHandlerWithTelemetry(topicID string, handler PubSubHandler, trace
 
 		// call actual handler function
 		handler(ctx, msg)
-
-		// flush spans
-		traceProvider.ForceFlush(ctx)
 	}
 }
 

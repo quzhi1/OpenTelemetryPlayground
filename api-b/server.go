@@ -114,7 +114,7 @@ func receivePubSub(ctx context.Context, tp *sdktrace.TracerProvider) {
 	}
 
 	// Handling messages
-	err = subscription.Receive(ctx, wrapPubSubHandlerWithTelemetry(pubSubTopic, pubSubHandler, tp))
+	err = subscription.Receive(ctx, wrapPubSubHandlerWithTelemetry(pubSubTopic, pubSubHandler))
 
 	if err != nil {
 		panic(err)
